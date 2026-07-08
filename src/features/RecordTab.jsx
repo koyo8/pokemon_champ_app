@@ -3,39 +3,30 @@ import { POKE_BY_ID, fullPokeList } from '../data/pokemon';
 import { PokemonImage } from '../components/PokemonImage';
 
 export function RecordTab({
-    // シーズン関連
     recordSeason, setRecordSeason, isSeasonEditing, setIsSeasonEditing,
     isSeasonDropdownOpen, setIsSeasonDropdownOpen, availableSeasons,
-    // 相手パーティ・選出関連
     selectedIds, setSelectedIds, handleToggleOpp6, searchText, setSearchText,
     suggestedIds, oppPickedIds, handleToggleOppPick, isLoading,
-    // 自分パーティ・選出関連
     myPartyIds, setMyPartyIds, myPartyList, myPickedIds, handleToggleMyPick, setMyPickedIds,
-    // 結果・保存
     matchResult, setMatchResult, handleSave, isSaving, showToast
 }) {
-    // モーダル専用のState（記録タブ内だけで使うためここに局所化）
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [modalSearchText, setModalSearchText] = useState("");
     const [debouncedModalSearchText, setDebouncedModalSearchText] = useState("");
     const [tempMyPartyIds, setTempMyPartyIds] = useState([]);
 
-    // メイン検索のデバウンス用State
     const [debouncedSearchText, setDebouncedSearchText] = useState("");
 
-    // メイン検索のデバウンス効果
     useEffect(() => {
         const timer = setTimeout(() => setDebouncedSearchText(searchText), 300);
         return () => clearTimeout(timer);
     }, [searchText]);
 
-    // モーダル検索のデバウンス効果
     useEffect(() => {
         const timer = setTimeout(() => setDebouncedModalSearchText(modalSearchText), 300);
         return () => clearTimeout(timer);
     }, [modalSearchText]);
 
-    // デバウンスされたテキストでフィルタリング
     const filteredPokeList = useMemo(() => 
         fullPokeList.filter(poke => poke.name.includes(debouncedSearchText) || poke.hira.includes(debouncedSearchText)), 
     [debouncedSearchText]);
@@ -44,14 +35,12 @@ export function RecordTab({
         fullPokeList.filter(poke => poke.name.includes(debouncedModalSearchText) || poke.hira.includes(debouncedModalSearchText)), 
     [debouncedModalSearchText]);
 
-    // モーダル用のトグル処理
     const handleToggleModalPick = useCallback((id, isSelected) => {
         if (!isSelected && tempMyPartyIds.length >= 6) return showToast("選べるのは6匹までです");
         setTempMyPartyIds(prev => isSelected ? prev.filter(i => i !== id) : [...prev, id]);
         if (!isSelected) setModalSearchText("");
     }, [tempMyPartyIds.length, showToast]);
 
-    // モーダルの保存処理
     const handleSaveModal = () => {
         if (tempMyPartyIds.length !== 6) return showToast("自分のパーティを6匹選んでください");
         setMyPartyIds(tempMyPartyIds);
@@ -61,11 +50,24 @@ export function RecordTab({
         showToast("パーティを更新しました", "success");
     };
 
-    // ボタンレンダリング用ヘルパー
+    const tapOptimizedStyle = {
+        touchAction: 'manipulation',
+        userSelect: 'none',
+        WebkitUserSelect: 'none',
+        WebkitTouchCallout: 'none'
+    };
+
     const renderButton = (poke, list, toggleFunc, styleClass, iconOnly = false) => {
         const isSelected = list.includes(poke.id);
         return (
-            <button key={poke.name} className={`poke-btn ${isSelected ? styleClass : ''} ${iconOnly ? 'icon-only' : ''}`} onClick={(e) => { e.currentTarget.blur(); toggleFunc(poke.id, isSelected); }} aria-pressed={isSelected} title={poke.name}>
+            <button 
+                key={poke.name} 
+                className={`poke-btn ${isSelected ? styleClass : ''} ${iconOnly ? 'icon-only' : ''}`} 
+                onClick={(e) => { e.currentTarget.blur(); toggleFunc(poke.id, isSelected); }} 
+                aria-pressed={isSelected} 
+                title={poke.name}
+                style={tapOptimizedStyle}
+            >
                 <PokemonImage pokeId={poke.id} name={poke.name} />
                 {!iconOnly && <span>{poke.name}</span>}
             </button>
@@ -78,7 +80,13 @@ export function RecordTab({
         let badgeClass = isSelected ? (isOpp ? (selectedIndex < 2 ? 'opp-lead' : 'opp-back') : (selectedIndex < 2 ? 'my-lead' : 'my-back')) : '';
 
         return (
-            <button key={poke.name} className={`poke-btn ${isSelected ? styleClass : ''}`} onClick={(e) => { e.currentTarget.blur(); toggleFunc(poke.id, isSelected); }} aria-pressed={isSelected}>
+            <button 
+                key={poke.name} 
+                className={`poke-btn ${isSelected ? styleClass : ''}`} 
+                onClick={(e) => { e.currentTarget.blur(); toggleFunc(poke.id, isSelected); }} 
+                aria-pressed={isSelected}
+                style={tapOptimizedStyle}
+            >
                 <div className={`pick-badge ${badgeClass}`} style={{ opacity: isSelected ? 1 : 0, visibility: isSelected ? 'visible' : 'hidden' }}>{isSelected ? selectedIndex + 1 : ''}</div>
                 <PokemonImage pokeId={poke.id} name={poke.name} />{poke.name}
             </button>
@@ -87,7 +95,7 @@ export function RecordTab({
 
     return (
         <div role="tabpanel">
-            {/* シーズン管理カード */}
+            {/* シーズン管理 */}
             <div className="md-card" style={{ padding: '16px 20px', marginBottom: '24px' }}>
                 <div className="section-header" style={{ marginBottom: '12px' }}>
                     <h3 style={{ margin: 0 }}>記録するシーズン</h3>
@@ -96,11 +104,32 @@ export function RecordTab({
                     </button>
                 </div>
                 <div style={{ position: 'relative' }}>
-                    <input type="text" className="search-box" placeholder={isSeasonEditing ? "例: シーズン19" : "シーズン未設定"} value={recordSeason} onChange={(e) => setRecordSeason(e.target.value)} disabled={!isSeasonEditing} onFocus={() => { if (isSeasonEditing) setIsSeasonDropdownOpen(true); }} onBlur={() => setTimeout(() => setIsSeasonDropdownOpen(false), 200)} style={{ margin: 0, backgroundColor: isSeasonEditing ? '#FFFFFF' : 'var(--app-bg)', border: isSeasonEditing ? '2px solid #1A73E8' : '2px solid transparent', color: isSeasonEditing ? 'var(--text-main)' : 'var(--text-sub)', fontWeight: isSeasonEditing ? 'normal' : 'bold' }} />
+                    <input 
+                        type="text" 
+                        className="search-box" 
+                        placeholder={isSeasonEditing ? "例: シーズン19" : "シーズン未設定"} 
+                        value={recordSeason} 
+                        onChange={(e) => setRecordSeason(e.target.value)} 
+                        disabled={!isSeasonEditing} 
+                        onFocus={() => { if (isSeasonEditing) setIsSeasonDropdownOpen(true); }} 
+                        onBlur={() => setTimeout(() => setIsSeasonDropdownOpen(false), 200)} 
+                        style={{ 
+                            margin: 0, backgroundColor: isSeasonEditing ? '#FFFFFF' : 'var(--app-bg)', 
+                            border: isSeasonEditing ? '2px solid #1A73E8' : '2px solid transparent', 
+                            color: '#000000', WebkitTextFillColor: '#000000', opacity: 1, 
+                            fontWeight: isSeasonEditing ? 'normal' : 'bold' 
+                        }} 
+                    />
                     {isSeasonEditing && isSeasonDropdownOpen && availableSeasons.length > 0 && (
                         <div style={{ position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, backgroundColor: 'var(--card-bg)', border: '1px solid var(--divider)', borderRadius: '12px', boxShadow: 'var(--shadow-md)', zIndex: 2000, maxHeight: '160px', overflowY: 'auto', padding: '4px' }}>
                             {availableSeasons.map((s, idx) => (
-                                <div key={idx} style={{ padding: '12px 16px', borderRadius: '8px', cursor: 'pointer', fontSize: '15px', color: 'var(--text-main)', backgroundColor: recordSeason === s ? 'var(--primary-light)' : 'transparent' }} onMouseDown={(e) => { e.preventDefault(); setRecordSeason(s); localStorage.setItem('vgc_season', s); setIsSeasonDropdownOpen(false); }}>{s}</div>
+                                <div 
+                                    key={idx} 
+                                    style={{ padding: '12px 16px', borderRadius: '8px', cursor: 'pointer', fontSize: '15px', color: '#000000', backgroundColor: recordSeason === s ? 'var(--primary-light)' : 'transparent' }} 
+                                    onMouseDown={(e) => { e.preventDefault(); setRecordSeason(s); localStorage.setItem('vgc_season', s); setIsSeasonDropdownOpen(false); }}
+                                >
+                                    {s}
+                                </div>
                             ))}
                         </div>
                     )}
@@ -111,50 +140,73 @@ export function RecordTab({
             {/* 相手パーティ選択 */}
             <h2>相手のパーティを選択（{selectedIds.length} / 6匹）</h2>
             <div className="md-card">
-                {selectedIds.length > 0 && (
-                    <div style={{ marginBottom: '16px' }}>
-                        <div className="poke-container">
-                            {selectedIds.map(id => POKE_BY_ID[id]).filter(Boolean).map(poke => renderButton(poke, selectedIds, handleToggleOpp6, 'selected-opp', false))}
+                {/* 1. 選択済みのポケモン */}
+                <div style={{
+                    minHeight: selectedIds.length === 0 ? '52px' : 'auto',
+                    backgroundColor: selectedIds.length === 0 ? 'var(--app-bg)' : 'transparent',
+                    borderRadius: '8px',
+                    border: selectedIds.length === 0 ? '2px dashed var(--divider)' : 'none',
+                    marginBottom: selectedIds.length === 6 ? '0' : '16px',
+                    display: selectedIds.length === 0 ? 'flex' : 'block',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                }}>
+                    {selectedIds.length > 0 && (
+                        <div className="poke-container" style={{ gap: '10px' }}>
+                            {selectedIds.map(id => POKE_BY_ID[id]).filter(Boolean).map(poke => renderButton(poke, selectedIds, handleToggleOpp6, 'selected-opp', true))}
                         </div>
-                        <hr style={{ border: 'none', borderTop: '1px solid var(--divider)', margin: '16px 0' }} />
-                    </div>
-                )}
+                    )}
+                </div>
 
-                {isLoading ? (
-                    <div style={{ textAlign: 'center', padding: '20px 0', color: 'var(--text-sub)', fontSize: '14px', fontWeight: 'bold' }}>データを読み込み中...</div>
-                ) : (
-                    <>
-                        {searchText === "" && suggestedIds.suggested.length > 0 && (
-                            <div style={{ marginBottom: '16px' }}>
-                                <h4 style={{ fontSize: '13px', color: 'var(--text-sub)', marginBottom: '12px', marginTop: '0' }}>
-                                    {selectedIds.length === 0 ? "よく遭遇するポケモン (TOP15)" : "一緒によくいるポケモン"}
-                                </h4>
-                                <div className="poke-container" style={{ gap: '10px' }}>
-                                    {suggestedIds.suggested.map(id => POKE_BY_ID[id]).filter(Boolean).map(poke => renderButton(poke, selectedIds, handleToggleOpp6, 'selected-opp', true))}
+                {/* 2. 6匹未満の時だけ検索欄と候補を表示 */}
+                {selectedIds.length < 6 && (
+                    isLoading ? (
+                        <div style={{ textAlign: 'center', padding: '20px 0', color: 'var(--text-sub)', fontSize: '14px', fontWeight: 'bold' }}>データを読み込み中...</div>
+                    ) : (
+                        <>
+                            <input type="text" className="search-box" placeholder="検索..." value={searchText} onChange={(e) => setSearchText(e.target.value)} style={{ marginBottom: '12px' }} />
+                            
+                            <div style={{ height: '400px', display: 'flex', flexDirection: 'column' }}>
+                                
+                                {/* サジェスト（スクロールせず固定） */}
+                                {searchText === "" && suggestedIds.suggested.length > 0 && (
+                                    <div style={{ flexShrink: 0, marginBottom: '8px' }}>
+                                        <h4 style={{ fontSize: '13px', color: 'var(--text-sub)', marginBottom: '12px', marginTop: '0' }}>
+                                            {selectedIds.length === 0 ? "よく遭遇するポケモン" : "一緒によくいるポケモン"}
+                                        </h4>
+                                        <div className="poke-container" style={{ gap: '10px' }}>
+                                            {suggestedIds.suggested.map(id => POKE_BY_ID[id]).filter(Boolean).map(poke => renderButton(poke, selectedIds, handleToggleOpp6, 'selected-opp', true))}
+                                        </div>
+                                        <hr style={{ border: 'none', borderTop: '1px solid var(--divider)', margin: '16px 0 8px 0' }} />
+                                    </div>
+                                )}
+
+                                {/* 検索結果（ここだけがスクロールする） */}
+                                <div style={{ flexGrow: 1, overflowY: 'auto', paddingRight: '4px' }}>
+                                    <div className="search-result-container" style={{ margin: 0 }}>
+                                        {searchText === "" ? (
+                                            fullPokeList.filter(poke => !suggestedIds.suggested.includes(poke.id) && !selectedIds.includes(poke.id)).map(poke => renderButton(poke, selectedIds, handleToggleOpp6, 'selected-opp', false))
+                                        ) : (
+                                            filteredPokeList.map(poke => renderButton(poke, selectedIds, handleToggleOpp6, 'selected-opp', false))
+                                        )}
+                                    </div>
                                 </div>
-                                <hr style={{ border: 'none', borderTop: '1px solid var(--divider)', margin: '16px 0' }} />
-                            </div>
-                        )}
 
-                        <input type="text" className="search-box" placeholder="検索..." value={searchText} onChange={(e) => setSearchText(e.target.value)} style={{ marginBottom: '12px' }} />
-                        
-                        <div className="search-result-container">
-                            {searchText === "" ? (
-                                fullPokeList.filter(poke => !suggestedIds.suggested.includes(poke.id) && !selectedIds.includes(poke.id)).map(poke => renderButton(poke, selectedIds, handleToggleOpp6, 'selected-opp', false))
-                            ) : (
-                                filteredPokeList.map(poke => renderButton(poke, selectedIds, handleToggleOpp6, 'selected-opp', false))
-                            )}
-                        </div>
-                    </>
+                            </div>
+                        </>
+                    )
                 )}
             </div>
 
-            {/* 選出記録 */}
+            {/* 選出と結果の記録 */}
             <h2>選出と結果を記録</h2>
             <div className="md-card">
                 <h3>相手の選出</h3>
                 <div className="poke-container" style={{ marginTop: '12px' }}>
                     {selectedIds.map(id => POKE_BY_ID[id]).filter(Boolean).map(poke => renderPickButton(poke, oppPickedIds, handleToggleOppPick, 'selected-opp', true))}
+                    {Array.from({ length: Math.max(0, 6 - selectedIds.length) }).map((_, i) => (
+                        <div key={`filler-opp-${i}`} style={{ visibility: 'hidden', pointerEvents: 'none' }} className="poke-btn"></div>
+                    ))}
                 </div>
 
                 <hr style={{ border: 'none', borderTop: '1px solid var(--divider)', margin: '24px 0' }} />
@@ -164,7 +216,18 @@ export function RecordTab({
                     <button className="edit-btn" onClick={() => { setTempMyPartyIds([...myPartyIds]); setModalSearchText(""); setIsModalOpen(true); }}>編集</button>
                 </div>
                 <div className="poke-container">
-                    {myPartyList.map(poke => renderPickButton(poke, myPickedIds, handleToggleMyPick, 'selected-my', false))}
+                    {myPartyList.length === 0 ? (
+                        <div style={{ gridColumn: '1 / -1', textAlign: 'center', color: 'var(--text-sub)', fontSize: '13px', padding: '20px 0' }}>
+                            編集ボタンからパーティを登録してください
+                        </div>
+                    ) : (
+                        <>
+                            {myPartyList.map(poke => renderPickButton(poke, myPickedIds, handleToggleMyPick, 'selected-my', false))}
+                            {Array.from({ length: Math.max(0, 6 - myPartyList.length) }).map((_, i) => (
+                                <div key={`filler-my-${i}`} style={{ visibility: 'hidden', pointerEvents: 'none' }} className="poke-btn"></div>
+                            ))}
+                        </>
+                    )}
                 </div>
             </div>
 
@@ -175,7 +238,7 @@ export function RecordTab({
 
             <button className="save-btn" onClick={handleSave} disabled={isSaving}>{isSaving ? "保存中..." : "記録を保存する"}</button>
 
-            {/* 自分のパーティ編集モーダル */}
+            {/* モーダル */}
             {isModalOpen && (
                 <div className="modal-overlay" onClick={() => setIsModalOpen(false)}>
                     <div className="modal-content" onClick={(e) => e.stopPropagation()}>

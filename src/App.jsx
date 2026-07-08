@@ -4,16 +4,14 @@ import './index.css';
 import { POKEMON_DATA, fullPokeList, POKE_BY_ID } from './data/pokemon';
 import { Toast } from './components/Toast';
 
-// 切り出したコンポーネントのインポート
 import { RecordTab } from './features/RecordTab';
 import { AnalysisTab } from './features/AnalysisTab';
 
-const GAS_URL = "https://script.google.com/macros/s/AKfycbx9FUGeI3g7v6AU5pAT8JPTlA1geF0v8FY79um5bc3IXdTm78sg1cVpV4Xu0QQmNr75/exec";
+const GAS_URL = "https://script.google.com/macros/s/AKfycbzW-esLy9C0hbmtBSIfQnQocKxMcq-0Ro3407mKF5jQ3N35nXznvQ-aMFX9v2hIg6fw/exec";
 
 export default function App() {
     const [currentTab, setCurrentTab] = useState('record');
     
-    // データ共有系State
     const [analysisData, setAnalysisData] = useState(() => {
         const saved = localStorage.getItem('vgc_analysis_data');
         return saved ? JSON.parse(saved) : [];
@@ -24,7 +22,6 @@ export default function App() {
         return saved ? JSON.parse(saved) : [];
     });
 
-    // 記録タブ専用State（モーダル以外）
     const [recordSeason, setRecordSeason] = useState(() => localStorage.getItem('vgc_season') || "");
     const [isSeasonEditing, setIsSeasonEditing] = useState(false);
     const [isSeasonDropdownOpen, setIsSeasonDropdownOpen] = useState(false);
@@ -35,7 +32,6 @@ export default function App() {
     const [matchResult, setMatchResult] = useState(null);
     const [isSaving, setIsSaving] = useState(false);
 
-    // 分析タブ専用State
     const [analysisSeason, setAnalysisSeason] = useState("すべて");
     const [selectedParty, setSelectedParty] = useState("すべて");
     const [filterRange, setFilterRange] = useState('all');
@@ -46,7 +42,6 @@ export default function App() {
     const [isAiExpanded, setIsAiExpanded] = useState(true);
     const [aiError, setAiError] = useState("");
 
-    // システム系
     const [isLoading, setIsLoading] = useState(() => !localStorage.getItem('vgc_analysis_data'));
     const [toast, setToast] = useState(null);
     const toastTimeoutRef = useRef(null);
@@ -59,7 +54,6 @@ export default function App() {
         toastTimeoutRef.current = setTimeout(() => setToast(null), 3000);
     }, []);
 
-    // データフェッチ
     const fetchAnalysisData = useCallback(async (isManualReload = false) => {
         if (isFetchingRef.current) return;
         isFetchingRef.current = true;
@@ -68,7 +62,7 @@ export default function App() {
         if (!hasCache || isManualReload) setIsLoading(true);
 
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 60000); // 60秒へ延長
+        const timeoutId = setTimeout(() => controller.abort(), 60000);
 
         try {
             const response = await fetch(GAS_URL, { signal: controller.signal });
@@ -92,7 +86,17 @@ export default function App() {
                         localStorage.setItem('my_vgc_party', JSON.stringify(ids));
                     }
                 }
-                if (latestRow[8] && latestRow[8].trim() !== "") setAnalysisSeason(latestRow[8]);
+                if (latestRow[8] && latestRow[8].trim() !== "") {
+                    setAnalysisSeason(latestRow[8]);
+                    // ★改修: 記録シーズンが空の場合、最新のバトルレコードのシーズンを自動セット
+                    setRecordSeason(prev => {
+                        if (!prev) {
+                            localStorage.setItem('vgc_season', latestRow[8]);
+                            return latestRow[8];
+                        }
+                        return prev;
+                    });
+                }
             }
             setAnalysisData(dataRows);
             if (isManualReload) showToast("データを最新化しました", "success");
@@ -111,9 +115,10 @@ export default function App() {
 
     const handleReload = useCallback(() => { window.location.reload(); }, []);
 
-    // 共通のデータ抽出ロジック (useMemo)
     const availableSeasons = useMemo(() => {
-        return [...new Set(analysisData.map(row => row[8]).filter(s => s && String(s).trim() !== ""))];
+        const seasons = analysisData.map(row => row[8]).filter(s => s && String(s).trim() !== "");
+        // ★改修: reverse() を使って最新のシーズンが上に来るように降順ソート
+        return [...new Set(seasons.reverse())];
     }, [analysisData]);
 
     const partyList = useMemo(() => {
@@ -129,7 +134,6 @@ export default function App() {
     const analysisSeasonList = useMemo(() => ["すべて", ...availableSeasons], [availableSeasons]);
     const myPartyList = useMemo(() => myPartyIds.map(id => POKE_BY_ID[id]).filter(Boolean), [myPartyIds]);
 
-    // ハンドラー群
     const handleToggleOpp6 = useCallback((id, isSelected) => {
         if (isSelected) {
             setSelectedIds(prev => prev.filter(pId => pId !== id));
@@ -156,7 +160,6 @@ export default function App() {
         else { setSortTarget(target); setSortOrder('desc'); }
     };
 
-    // 記録保存
     const handleSave = useCallback(async () => {
         if (selectedIds.length === 0) return showToast("相手のパーティを1匹以上選んでください");
         if (oppPickedIds.length < 2) return showToast("相手の選出を2匹以上選んでください");
@@ -194,7 +197,6 @@ export default function App() {
         }
     }, [selectedIds, oppPickedIds, myPartyIds, myPickedIds, matchResult, recordSeason, showToast, fetchAnalysisData]);
 
-    // 相手パーティサジェストロジック
     const suggestedIds = useMemo(() => {
         const currentSeasonData = recordSeason ? analysisData.filter(row => row[8] === recordSeason) : analysisData;
         const globalCounts = {};
@@ -219,7 +221,6 @@ export default function App() {
         return { suggested: [...sortedIds, ...fallbackIds].slice(0, 15) };
     }, [selectedIds, analysisData, recordSeason]);
 
-    // 統計計算ロジック
     const stats = useMemo(() => {
         let filteredData = analysisData;
         if (selectedParty !== "すべて") filteredData = filteredData.filter(row => row[7] === selectedParty);
@@ -299,7 +300,6 @@ export default function App() {
         return { totalMatches, winCount, winRate, statsArray, myStatsArray, oppLeadPairStats, myLeadPairStats };
     }, [analysisData, selectedParty, analysisSeason, filterRange, sortTarget, sortOrder]);
 
-    // AI分析
     const handleAIAnalysis = useCallback(async () => {
         if (stats.totalMatches === 0) { setAiError("対戦データがありません"); return; }
         setIsAiLoading(true); setAiResult(""); setAiError("");
