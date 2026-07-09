@@ -35,11 +35,22 @@ export function RecordTab({
         fullPokeList.filter(poke => poke.name.includes(debouncedModalSearchText) || poke.hira.includes(debouncedModalSearchText)), 
     [debouncedModalSearchText]);
 
-    const handleToggleModalPick = useCallback((id, isSelected) => {
-        if (!isSelected && tempMyPartyIds.length >= 6) return showToast("選べるのは6匹までです");
-        setTempMyPartyIds(prev => isSelected ? prev.filter(i => i !== id) : [...prev, id]);
-        if (!isSelected) setModalSearchText("");
-    }, [tempMyPartyIds.length, showToast]);
+    // ★ 内部モーダル用の処理も完全関数型更新に書き換えて連打対策
+    const handleToggleModalPick = useCallback((id) => {
+        setTempMyPartyIds(prev => {
+            const isCurrentlySelected = prev.includes(id);
+            if (isCurrentlySelected) {
+                return prev.filter(i => i !== id);
+            } else {
+                if (prev.length >= 6) {
+                    showToast("選べるのは6匹までです");
+                    return prev;
+                }
+                setModalSearchText("");
+                return [...prev, id];
+            }
+        });
+    }, [showToast]);
 
     const handleSaveModal = () => {
         if (tempMyPartyIds.length !== 6) return showToast("自分のパーティを6匹選んでください");
@@ -63,7 +74,7 @@ export function RecordTab({
             <button 
                 key={poke.name} 
                 className={`poke-btn ${isSelected ? styleClass : ''} ${iconOnly ? 'icon-only' : ''}`} 
-                onClick={(e) => { e.currentTarget.blur(); toggleFunc(poke.id, isSelected); }} 
+                onClick={(e) => { e.currentTarget.blur(); toggleFunc(poke.id); }} // ★ 修正: id だけを渡す
                 aria-pressed={isSelected} 
                 title={poke.name}
                 style={tapOptimizedStyle}
@@ -83,7 +94,7 @@ export function RecordTab({
             <button 
                 key={poke.name} 
                 className={`poke-btn ${isSelected ? styleClass : ''}`} 
-                onClick={(e) => { e.currentTarget.blur(); toggleFunc(poke.id, isSelected); }} 
+                onClick={(e) => { e.currentTarget.blur(); toggleFunc(poke.id); }} // ★ 修正: id だけを渡す
                 aria-pressed={isSelected}
                 style={tapOptimizedStyle}
             >
@@ -140,7 +151,6 @@ export function RecordTab({
             {/* 相手パーティ選択 */}
             <h2>相手のパーティを選択（{selectedIds.length} / 6匹）</h2>
             <div className="md-card">
-                {/* 1. 選択済みのポケモン */}
                 <div style={{
                     minHeight: selectedIds.length === 0 ? '52px' : 'auto',
                     backgroundColor: selectedIds.length === 0 ? 'var(--app-bg)' : 'transparent',
@@ -158,7 +168,6 @@ export function RecordTab({
                     )}
                 </div>
 
-                {/* 2. 6匹未満の時だけ検索欄と候補を表示 */}
                 {selectedIds.length < 6 && (
                     isLoading ? (
                         <div style={{ textAlign: 'center', padding: '20px 0', color: 'var(--text-sub)', fontSize: '14px', fontWeight: 'bold' }}>データを読み込み中...</div>
@@ -168,7 +177,6 @@ export function RecordTab({
                             
                             <div style={{ height: '400px', display: 'flex', flexDirection: 'column' }}>
                                 
-                                {/* サジェスト（スクロールせず固定） */}
                                 {searchText === "" && suggestedIds.suggested.length > 0 && (
                                     <div style={{ flexShrink: 0, marginBottom: '8px' }}>
                                         <h4 style={{ fontSize: '13px', color: 'var(--text-sub)', marginBottom: '12px', marginTop: '0' }}>
@@ -181,7 +189,6 @@ export function RecordTab({
                                     </div>
                                 )}
 
-                                {/* 検索結果（ここだけがスクロールする） */}
                                 <div style={{ flexGrow: 1, overflowY: 'auto', paddingRight: '4px' }}>
                                     <div className="search-result-container" style={{ margin: 0 }}>
                                         {searchText === "" ? (

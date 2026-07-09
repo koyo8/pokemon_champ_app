@@ -1,12 +1,18 @@
 import { POKEMON_DATA } from '../data/pokemon';
 import { PokemonImage } from '../components/PokemonImage';
 
+// グラフ描画用コンポーネントをインポート
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
+
 export function AnalysisTab({
     isLoading, stats, selectedParty, setSelectedParty, partyList,
     analysisSeason, setAnalysisSeason, analysisSeasonList,
     filterRange, setFilterRange, sortTarget, handleSort, sortOrder,
     handleAIAnalysis, isAiLoading, aiError, aiResult, isAiExpanded, setIsAiExpanded
 }) {
+    // ★ 追加: データ数（対戦数）が20以下の時だけドットを表示する判定
+    const showDots = stats.trendData && stats.trendData.length <= 20;
+
     return (
         <div role="tabpanel">
             {isLoading ? (
@@ -39,6 +45,37 @@ export function AnalysisTab({
 
                     {/* 戦績サマリー */}
                     <div className="md-card stats-summary">集計対戦数<span>{stats.totalMatches}</span>戦 / 勝ち<span>{stats.winCount}</span>勝<br />勝率<span>{stats.winRate}</span>%</div>
+
+                    {/* 勝率推移グラフ */}
+                    {stats.trendData && stats.trendData.length > 1 && (
+                        <div className="md-card" style={{ padding: '16px 20px', marginBottom: '24px' }}>
+                            <h3 style={{ marginTop: 0, marginBottom: '16px' }}>勝率の推移</h3>
+                            <div style={{ width: '100%', height: '220px' }}>
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <LineChart data={stats.trendData} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
+                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e0e0e0" />
+                                        <XAxis dataKey="match" tickFormatter={(tick) => `${tick}戦`} tick={{ fontSize: 12, fill: '#5f6368' }} />
+                                        <YAxis domain={[0, 100]} ticks={[0, 50, 100]} tickFormatter={(tick) => `${tick}%`} tick={{ fontSize: 12, fill: '#5f6368' }} />
+                                        <Tooltip 
+                                            formatter={(value) => [`${value}%`, '勝率']}
+                                            labelFormatter={(label) => `${label}戦目時点`}
+                                            contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: 'var(--shadow-md)', fontSize: '13px', fontWeight: 'bold' }}
+                                        />
+                                        <ReferenceLine y={50} stroke="#FF3B30" strokeDasharray="3 3" opacity={0.6} />
+                                        {/* ★ 改修: showDots が true の時だけドットを表示、falseの時は線のみにする */}
+                                        <Line 
+                                            type="monotone" 
+                                            dataKey="winRate" 
+                                            stroke="#1A73E8" 
+                                            strokeWidth={3} 
+                                            dot={showDots ? { r: 4, fill: '#1A73E8', strokeWidth: 2, stroke: '#fff' } : false} 
+                                            activeDot={{ r: 6 }} 
+                                        />
+                                    </LineChart>
+                                </ResponsiveContainer>
+                            </div>
+                        </div>
+                    )}
 
                     {/* AI環境分析 */}
                     <div className="md-card" style={{ padding: '16px 20px', marginBottom: '24px' }}>

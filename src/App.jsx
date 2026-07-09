@@ -31,6 +31,7 @@ export default function App() {
     const [myPickedIds, setMyPickedIds] = useState([]);
     const [matchResult, setMatchResult] = useState(null);
     const [isSaving, setIsSaving] = useState(false);
+    const [isSyncing, setIsSyncing] = useState(false);
 
     const [analysisSeason, setAnalysisSeason] = useState("すべて");
     const [selectedParty, setSelectedParty] = useState("すべて");
@@ -53,6 +54,46 @@ export default function App() {
         if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
         toastTimeoutRef.current = setTimeout(() => setToast(null), 3000);
     }, []);
+
+    const syncOfflineData = useCallback(async () => {
+        if (!navigator.onLine) return;
+        const queue = JSON.parse(localStorage.getItem('vgc_offline_queue') || '[]');
+        if (queue.length === 0) return;
+
+        setIsSyncing(true);
+        showToast(`通信が回復しました。未送信データ(${queue.length}件)を同期中...`, 'info');
+
+        let successCount = 0;
+        const failedQueue = [];
+
+        for (const payload of queue) {
+            try {
+                const response = await fetch(GAS_URL, {
+                    method: "POST",
+                    headers: { "Content-Type": "text/plain" },
+                    body: JSON.stringify(payload)
+                });
+                if (response.ok) successCount++;
+                else failedQueue.push(payload);
+            } catch (error) {
+                failedQueue.push(payload);
+            }
+        }
+
+        localStorage.setItem('vgc_offline_queue', JSON.stringify(failedQueue));
+        setIsSyncing(false);
+
+        if (successCount > 0) {
+            showToast(`${successCount}件のデータを自動送信しました！`, 'success');
+            fetchAnalysisData(true);
+        }
+    }, [showToast]);
+
+    useEffect(() => {
+        syncOfflineData();
+        window.addEventListener('online', syncOfflineData);
+        return () => window.removeEventListener('online', syncOfflineData);
+    }, [syncOfflineData]);
 
     const fetchAnalysisData = useCallback(async (isManualReload = false) => {
         if (isFetchingRef.current) return;
@@ -88,7 +129,6 @@ export default function App() {
                 }
                 if (latestRow[8] && latestRow[8].trim() !== "") {
                     setAnalysisSeason(latestRow[8]);
-                    // ★改修: 記録シーズンが空の場合、最新のバトルレコードのシーズンを自動セット
                     setRecordSeason(prev => {
                         if (!prev) {
                             localStorage.setItem('vgc_season', latestRow[8]);
@@ -113,11 +153,13 @@ export default function App() {
 
     useEffect(() => { fetchAnalysisData(); }, [fetchAnalysisData]);
 
-    const handleReload = useCallback(() => { window.location.reload(); }, []);
+    const handleReload = useCallback(() => { 
+        syncOfflineData();
+        fetchAnalysisData(true);
+    }, [syncOfflineData, fetchAnalysisData]);
 
     const availableSeasons = useMemo(() => {
         const seasons = analysisData.map(row => row[8]).filter(s => s && String(s).trim() !== "");
-        // ★改修: reverse() を使って最新のシーズンが上に来るように降順ソート
         return [...new Set(seasons.reverse())];
     }, [analysisData]);
 
@@ -134,26 +176,55 @@ export default function App() {
     const analysisSeasonList = useMemo(() => ["すべて", ...availableSeasons], [availableSeasons]);
     const myPartyList = useMemo(() => myPartyIds.map(id => POKE_BY_ID[id]).filter(Boolean), [myPartyIds]);
 
-    const handleToggleOpp6 = useCallback((id, isSelected) => {
-        if (isSelected) {
-            setSelectedIds(prev => prev.filter(pId => pId !== id));
-            setOppPickedIds(prev => prev.filter(pId => pId !== id));
-        } else {
-            if (selectedIds.length >= 6) return showToast("選べるのは6匹までです");
-            setSelectedIds(prev => [...prev, id]);
-            setSearchText("");
-        }
-    }, [selectedIds.length, showToast]);
+    // ★ 修正: 超高速連打に100%耐えられる「完全関数型更新」に変更
+    const handleToggleOpp6 = useCallback((id) => {
+        setSelectedIds(prev => {
+            const isCurrentlySelected = prev.includes(id);
+            if (isCurrentlySelected) {
+                setOppPickedIds(pPrev => pPrev.filter(pId => pId !== id));
+                return prev.filter(pId => pId !== id);
+            } else {
+                if (prev.length >= 6) {
+                    showToast("選べるのは6匹までです");
+                    return prev;
+                }
+                setSearchText("");
+                return [...prev, id];
+            }
+        });
+    }, [showToast]);
 
-    const handleToggleOppPick = useCallback((id, isSelected) => {
-        if (!isSelected && oppPickedIds.length >= 4) return showToast("選出できるのは4匹までです");
-        setOppPickedIds(prev => isSelected ? prev.filter(i => i !== id) : [...prev, id]);
-    }, [oppPickedIds.length, showToast]);
+    // ★ 修正: 超高速連打に100%耐えられる「完全関数型更新」に変更
+    const handleToggleOppPick = useCallback((id) => {
+        setOppPickedIds(prev => {
+            const isCurrentlySelected = prev.includes(id);
+            if (isCurrentlySelected) {
+                return prev.filter(i => i !== id);
+            } else {
+                if (prev.length >= 4) {
+                    showToast("選出できるのは4匹までです");
+                    return prev;
+                }
+                return [...prev, id];
+            }
+        });
+    }, [showToast]);
 
-    const handleToggleMyPick = useCallback((id, isSelected) => {
-        if (!isSelected && myPickedIds.length >= 4) return showToast("選出できるのは4匹までです");
-        setMyPickedIds(prev => isSelected ? prev.filter(i => i !== id) : [...prev, id]);
-    }, [myPickedIds.length, showToast]);
+    // ★ 修正: 超高速連打に100%耐えられる「完全関数型更新」に変更
+    const handleToggleMyPick = useCallback((id) => {
+        setMyPickedIds(prev => {
+            const isCurrentlySelected = prev.includes(id);
+            if (isCurrentlySelected) {
+                return prev.filter(i => i !== id);
+            } else {
+                if (prev.length >= 4) {
+                    showToast("選出できるのは4匹までです");
+                    return prev;
+                }
+                return [...prev, id];
+            }
+        });
+    }, [showToast]);
 
     const handleSort = (target) => {
         if (sortTarget === target) setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc');
@@ -167,10 +238,6 @@ export default function App() {
         if (myPickedIds.length !== 4) return showToast("自分の選出を4匹選んでください");
         if (!matchResult) return showToast("勝敗を選択してください");
 
-        setIsSaving(true);
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 60000);
-
         const payload = {
             opp_6: selectedIds.map(id => POKE_BY_ID[id].name).join(", "),
             opp_4: oppPickedIds.map(id => POKE_BY_ID[id].name).join(", "),
@@ -182,16 +249,37 @@ export default function App() {
             season: recordSeason 
         };
 
+        const resetUI = () => {
+            setSearchText(""); setSelectedIds([]); setOppPickedIds([]); setMyPickedIds([]); setMatchResult(null);
+            localStorage.setItem('vgc_season', recordSeason);
+        };
+
+        if (!navigator.onLine) {
+            const queue = JSON.parse(localStorage.getItem('vgc_offline_queue') || '[]');
+            queue.push(payload);
+            localStorage.setItem('vgc_offline_queue', JSON.stringify(queue));
+            showToast("圏外のため端末内に一時保存しました。通信回復時に自動送信されます。", "info");
+            resetUI();
+            return;
+        }
+
+        setIsSaving(true);
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 60000);
+
         try {
             await fetch(GAS_URL, { method: "POST", headers: { "Content-Type": "text/plain" }, body: JSON.stringify(payload), signal: controller.signal });
             clearTimeout(timeoutId);
             showToast("記録を保存しました", "success");
-            setSearchText(""); setSelectedIds([]); setOppPickedIds([]); setMyPickedIds([]); setMatchResult(null);
-            localStorage.setItem('vgc_season', recordSeason);
+            resetUI();
             fetchAnalysisData();
         } catch (error) {
             clearTimeout(timeoutId);
-            showToast(error.name === 'AbortError' ? "通信がタイムアウトしました。電波環境を確認してください。" : "保存に失敗しました");
+            const queue = JSON.parse(localStorage.getItem('vgc_offline_queue') || '[]');
+            queue.push(payload);
+            localStorage.setItem('vgc_offline_queue', JSON.stringify(queue));
+            showToast("通信が不安定なため、端末内に一時保存しました。後で自動送信されます。", "info");
+            resetUI();
         } finally {
             setIsSaving(false);
         }
@@ -230,6 +318,15 @@ export default function App() {
         const totalMatches = targetData.length;
         const winCount = targetData.filter(row => row[4] === '勝ち').length;
         const winRate = totalMatches > 0 ? ((winCount / totalMatches) * 100).toFixed(1) : 0;
+
+        let currentWins = 0;
+        const trendData = targetData.map((row, index) => {
+            if (row[4] === '勝ち') currentWins++;
+            return {
+                match: index + 1,
+                winRate: parseFloat(((currentWins / (index + 1)) * 100).toFixed(1))
+            };
+        });
 
         const oppStats = {}, myPickCounts = {}, oppLeadPairs = {}, myLeadPairs = {};
 
@@ -297,7 +394,7 @@ export default function App() {
             return { ...s, winRate: (s.win / s.count) * 100, bestBacks };
         }).sort((a, b) => b.count - a.count).slice(0, 5);
 
-        return { totalMatches, winCount, winRate, statsArray, myStatsArray, oppLeadPairStats, myLeadPairStats };
+        return { totalMatches, winCount, winRate, trendData, statsArray, myStatsArray, oppLeadPairStats, myLeadPairStats };
     }, [analysisData, selectedParty, analysisSeason, filterRange, sortTarget, sortOrder]);
 
     const handleAIAnalysis = useCallback(async () => {
@@ -333,8 +430,10 @@ export default function App() {
                         <h1 className="app-title"><span className="title-log">Log</span><span className="title-dex">Dex</span></h1>
                         <div className="app-subtitle">Pokémon Champions</div>
                     </div>
-                    <button className="reload-btn" onClick={handleReload} aria-label="ページを再読み込み">
-                        <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z" /></svg>
+                    <button className="reload-btn" onClick={handleReload} disabled={isSyncing} aria-label="ページを再読み込み">
+                        <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor" style={{ animation: isSyncing ? 'spin 1s linear infinite' : 'none' }}>
+                            <path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z" />
+                        </svg>
                     </button>
                 </div>
                 <div className="tab-container" role="tablist" aria-label="メインメニュー">
@@ -350,7 +449,7 @@ export default function App() {
                         selectedIds={selectedIds} setSelectedIds={setSelectedIds} handleToggleOpp6={handleToggleOpp6} searchText={searchText} setSearchText={setSearchText} suggestedIds={suggestedIds}
                         oppPickedIds={oppPickedIds} handleToggleOppPick={handleToggleOppPick} isLoading={isLoading}
                         myPartyIds={myPartyIds} setMyPartyIds={setMyPartyIds} myPartyList={myPartyList} myPickedIds={myPickedIds} handleToggleMyPick={handleToggleMyPick} setMyPickedIds={setMyPickedIds}
-                        matchResult={matchResult} setMatchResult={setMatchResult} handleSave={handleSave} isSaving={isSaving} showToast={showToast}
+                        matchResult={matchResult} setMatchResult={setMatchResult} handleSave={handleSave} isSaving={isSaving || isSyncing} showToast={showToast}
                     />
                 ) : (
                     <AnalysisTab
