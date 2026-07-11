@@ -24,7 +24,7 @@ body {
   background-color: var(--app-bg);
   color: var(--text-main);
   padding: 0;
-  max-width: 600px;
+  /* max-width: 600px; を削除して画面全体への制限を解除 */
   margin: 0 auto;
   -webkit-font-smoothing: antialiased;
 }
@@ -68,7 +68,6 @@ button {
   height: 108px;
   width: auto;
   object-fit: contain;
-  mix-blend-mode: multiply;
   pointer-events: none;
   z-index: 0;
 }
@@ -94,10 +93,13 @@ button {
 }
 
 .title-log {
-  color: #253544;
+  color: #253544; /* ロゴのL（ネイビー） */
 }
-.title-dex {
-  color: #187a41;
+.title-de {
+  color: #187a41; /* ロゴのD（グリーン） */
+}
+.title-x {
+  color: #f8b830; /* ロゴのX（イエロー） */
 }
 
 .app-subtitle {
@@ -636,48 +638,49 @@ select {
   background: var(--card-bg);
   flex-shrink: 0;
 }
+
 /* =========================================
    スマホでの画面ガタつき・ヘッダー見切れの根本解決
    （ネイティブアプリ型レイアウトへの変更）
 ========================================= */
-
-/* 1. ページ全体のスクロールを完全に禁止し、スマホの画面サイズに固定する */
 html,
 body {
-  height: 100dvh; /* dvh = 仮想キーボードの出現を考慮した最新の高さ単位 */
+  height: 100dvh; 
   margin: 0;
   padding: 0;
-  overflow: hidden; /* 画面全体のスクロールを禁止 */
+  overflow: hidden;
 }
 
-/* 2. アプリ全体を縦並びの箱（Flexbox）として設定する */
+/* PC用に横幅を1000pxまで拡張し、常に中央配置に設定 */
 #root,
 #root > div {
   height: 100dvh;
   display: flex;
   flex-direction: column;
+  max-width: 1000px;
+  margin: 0 auto;
+  width: 100%;
 }
-
-/* =========================================
-   先ほど追加したCSSの .sticky-top 部分を以下に書き換えてください
-========================================= */
 
 .sticky-top {
   flex-shrink: 0;
   position: relative;
   z-index: 9999;
   background-color: var(--app-bg);
-  /* ↓ 追加: iPhoneのノッチ・時計の裏に潜り込むのを防ぐ（自動で安全な隙間を空ける） */
   padding-top: env(safe-area-inset-top);
 }
 
-/* 4. 下半分の「コンテンツエリア」の中身だけがスクロールするようにする */
 .content-area {
-  flex-grow: 1; /* ヘッダー以外の残りの画面をすべて埋める */
-  overflow-y: auto; /* この箱の中だけスクロールを許可する */
-  -webkit-overflow-scrolling: touch; /* iOSでのスクロールを滑らかにする */
+  flex-grow: 1; 
+  overflow-y: auto; 
+  -webkit-overflow-scrolling: touch; 
 }
 
+/* =========================================
+   レスポンシブ対応（スマホ・PCでのレイアウト切り替え）
+========================================= */
+
+/* スマホ用設定（600px以下） */
 @media (max-width: 600px) {
   body {
     padding-bottom: 40px;
@@ -700,5 +703,32 @@ body {
   }
   .toast {
     bottom: 80px;
+  }
+}
+
+/* PC・タブレット用設定（768px以上） */
+@media (min-width: 768px) {
+  .content-area {
+    padding: 24px 32px;
+  }
+  .md-card {
+    padding: 24px 32px !important;
+  }
+  .poke-container {
+    gap: 16px !important;
+  }
+  .search-result-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .recharts-responsive-container {
+    min-height: 300px;
+  }
+  table {
+    font-size: 15px;
+  }
+  th, td {
+    padding: 12px 16px !important;
   }
 }
