@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
+import { createPortal } from 'react-dom'; // ★ 追加: Reactの最強機能「Portal」をインポート
 import { POKE_BY_ID, fullPokeList } from '../data/pokemon';
 import { PokemonImage } from '../components/PokemonImage';
 
@@ -35,7 +36,6 @@ export function RecordTab({
         fullPokeList.filter(poke => poke.name.includes(debouncedModalSearchText) || poke.hira.includes(debouncedModalSearchText)), 
     [debouncedModalSearchText]);
 
-    // ★ 内部モーダル用の処理も完全関数型更新に書き換えて連打対策
     const handleToggleModalPick = useCallback((id) => {
         setTempMyPartyIds(prev => {
             const isCurrentlySelected = prev.includes(id);
@@ -74,7 +74,7 @@ export function RecordTab({
             <button 
                 key={poke.name} 
                 className={`poke-btn ${isSelected ? styleClass : ''} ${iconOnly ? 'icon-only' : ''}`} 
-                onClick={(e) => { e.currentTarget.blur(); toggleFunc(poke.id); }} // ★ 修正: id だけを渡す
+                onClick={(e) => { e.currentTarget.blur(); toggleFunc(poke.id); }}
                 aria-pressed={isSelected} 
                 title={poke.name}
                 style={tapOptimizedStyle}
@@ -94,7 +94,7 @@ export function RecordTab({
             <button 
                 key={poke.name} 
                 className={`poke-btn ${isSelected ? styleClass : ''}`} 
-                onClick={(e) => { e.currentTarget.blur(); toggleFunc(poke.id); }} // ★ 修正: id だけを渡す
+                onClick={(e) => { e.currentTarget.blur(); toggleFunc(poke.id); }}
                 aria-pressed={isSelected}
                 style={tapOptimizedStyle}
             >
@@ -245,8 +245,8 @@ export function RecordTab({
 
             <button className="save-btn" onClick={handleSave} disabled={isSaving}>{isSaving ? "保存中..." : "記録を保存する"}</button>
 
-            {/* モーダル */}
-            {isModalOpen && (
+            {/* ★ 修正: モーダルを createPortal でラップし、document.body 直下に描画させる */}
+            {isModalOpen && createPortal(
                 <div className="modal-overlay" onClick={() => setIsModalOpen(false)}>
                     <div className="modal-content" onClick={(e) => e.stopPropagation()}>
                         <div className="modal-header">
@@ -268,7 +268,8 @@ export function RecordTab({
                             <button className="save-btn" onClick={handleSaveModal}>パーティを確定する</button>
                         </div>
                     </div>
-                </div>
+                </div>,
+                document.body // ← ここがミソです！HTMLの最上層に直接ねじ込みます
             )}
         </div>
     );
