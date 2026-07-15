@@ -37,7 +37,17 @@ export default function App() {
   const [isSyncing, setIsSyncing] = useState(false);
 
   const [analysisSeason, setAnalysisSeason] = useState("すべて");
-  const [selectedParty, setSelectedParty] = useState("すべて");
+  const [selectedParty, setSelectedParty] = useState(() => {
+    const saved = localStorage.getItem("vgc_analysis_data");
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      // 保存データの中から一番最新の行のパーティを取得する
+      if (parsed.length > 0 && parsed[parsed.length - 1][7]) {
+        return parsed[parsed.length - 1][7];
+      }
+    }
+    return "すべて";
+  });
   const [filterRange, setFilterRange] = useState("all");
   const [sortTarget, setSortTarget] = useState("encounter");
   const [sortOrder, setSortOrder] = useState("desc");
@@ -204,11 +214,22 @@ export default function App() {
     let filtered = analysisData;
     if (analysisSeason !== "すべて")
       filtered = filtered.filter((row) => row[8] === analysisSeason);
-    return [
-      "すべて",
-      ...new Set(filtered.map((row) => row[7]).filter(Boolean)),
-    ];
+
+    // 配列を反転（reverse）させて新しい順にし、重複を排除（Set）する
+    const reversedParties = [...filtered]
+      .reverse()
+      .map((row) => row[7])
+      .filter(Boolean);
+    return ["すべて", ...new Set(reversedParties)];
   }, [analysisData, analysisSeason]);
+
+  useEffect(() => {
+    // 選択中のパーティがリストから消えた場合（シーズン切替時など）
+    // 「すべて」ではなく、そのシーズンの「最新のパーティ」を自動選択する
+    if (selectedParty !== "すべて" && !partyList.includes(selectedParty)) {
+      setSelectedParty(partyList.length > 1 ? partyList[1] : "すべて");
+    }
+  }, [partyList, selectedParty]);
 
   useEffect(() => {
     if (selectedParty !== "すべて" && !partyList.includes(selectedParty))
