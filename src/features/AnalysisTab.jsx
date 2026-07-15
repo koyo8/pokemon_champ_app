@@ -51,9 +51,9 @@ export function AnalysisTab({
             className="md-card"
             style={{ padding: "16px 20px", marginBottom: "24px" }}
           >
-            <h3 style={{ marginTop: 0, marginBottom: "16px" }}>
+            {/* <h3 style={{ marginTop: 0, marginBottom: "16px" }}>
               分析フィルター
-            </h3>
+            </h3> */}
             <div style={{ marginBottom: "16px" }}>
               <label
                 htmlFor="season-select"
