@@ -12,7 +12,6 @@ export function RecordTab({
   setIsSeasonDropdownOpen,
   availableSeasons,
   selectedIds,
-  setSelectedIds,
   handleToggleOpp6,
   searchText,
   setSearchText,
@@ -70,6 +69,27 @@ export function RecordTab({
           poke.hira.includes(debouncedModalSearchText),
       ),
     [debouncedModalSearchText],
+  );
+
+  const suggestedPokes = useMemo(
+    () =>
+      suggestedIds.suggested
+        .map((id) => POKE_BY_ID[id])
+        .filter(Boolean),
+    [suggestedIds],
+  );
+  const suggestedIdSet = useMemo(
+    () => new Set(suggestedIds.suggested),
+    [suggestedIds],
+  );
+  const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds]);
+  const browsePokeList = useMemo(
+    () =>
+      fullPokeList.filter(
+        (poke) =>
+          !suggestedIdSet.has(poke.id) && !selectedIdSet.has(poke.id),
+      ),
+    [suggestedIdSet, selectedIdSet],
   );
 
   const handleToggleModalPick = useCallback(
@@ -357,10 +377,7 @@ export function RecordTab({
                           : "一緒によくいるポケモン"}
                       </h4>
                       <div className="poke-container" style={{ gap: "10px" }}>
-                        {suggestedIds.suggested
-                          .map((id) => POKE_BY_ID[id])
-                          .filter(Boolean)
-                          .map((poke) =>
+                        {suggestedPokes.map((poke) =>
                             renderButton(
                               poke,
                               selectedIds,
@@ -392,13 +409,7 @@ export function RecordTab({
                       style={{ margin: 0 }}
                     >
                       {searchText === ""
-                        ? fullPokeList
-                            .filter(
-                              (poke) =>
-                                !suggestedIds.suggested.includes(poke.id) &&
-                                !selectedIds.includes(poke.id),
-                            )
-                            .map((poke) =>
+                        ? browsePokeList.map((poke) =>
                               renderButton(
                                 poke,
                                 selectedIds,

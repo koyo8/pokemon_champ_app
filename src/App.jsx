@@ -1,14 +1,49 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import {
+  lazy,
+  Suspense,
+  useState,
+  useEffect,
+  useMemo,
+  useCallback,
+  useRef,
+} from "react";
 import "./index.css";
 
-import { POKEMON_DATA, fullPokeList, POKE_BY_ID } from "./data/pokemon";
+import { POKEMON_DATA, POKE_BY_ID } from "./data/pokemon";
 import { Toast } from "./components/Toast";
 
 import { RecordTab } from "./features/RecordTab";
-import { AnalysisTab } from "./features/AnalysisTab";
+
+const AnalysisTab = lazy(() =>
+  import("./features/AnalysisTab").then(({ AnalysisTab: Component }) => ({
+    default: Component,
+  })),
+);
 
 const GAS_URL =
   "https://script.google.com/macros/s/AKfycbzW-esLy9C0hbmtBSIfQnQocKxMcq-0Ro3407mKF5jQ3N35nXznvQ-aMFX9v2hIg6fw/exec";
+
+function sortOpponentStats(statsArray, sortTarget, sortOrder) {
+  return [...statsArray].sort((a, b) => {
+    if (sortTarget === "winRate") {
+      if (a.pick === 0 && b.pick !== 0) return 1;
+      if (b.pick === 0 && a.pick !== 0) return -1;
+      if (a.pick === 0 && b.pick === 0) return b.encounter - a.encounter;
+    }
+
+    let difference = 0;
+    if (sortTarget === "encounter") {
+      difference = a.encounter - b.encounter || a.pickRate - b.pickRate;
+    } else if (sortTarget === "pick") {
+      difference = a.pickRate - b.pickRate || a.encounter - b.encounter;
+    } else if (sortTarget === "lead") {
+      difference = a.leadRate - b.leadRate || a.encounter - b.encounter;
+    } else if (sortTarget === "winRate") {
+      difference = a.winRate - b.winRate || a.encounter - b.encounter;
+    }
+    return sortOrder === "desc" ? -difference : difference;
+  });
+}
 
 export default function App() {
   const [currentTab, setCurrentTab] = useState("record");
@@ -37,17 +72,16 @@ export default function App() {
   const [isSyncing, setIsSyncing] = useState(false);
 
   const [analysisSeason, setAnalysisSeason] = useState("すべて");
-  const [selectedParty, setSelectedParty] = useState(() => {
-    const saved = localStorage.getItem("vgc_analysis_data");
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      // 保存データの中から一番最新の行のパーティを取得する
-      if (parsed.length > 0 && parsed[parsed.length - 1][7]) {
-        return parsed[parsed.length - 1][7];
-      }
+
+  // ★ 複数選択対応の初期状態
+  const [selectedParties, setSelectedParties] = useState(() => {
+    const latestRow = analysisData[analysisData.length - 1];
+    if (latestRow?.[7]) {
+      return [latestRow[7]];
     }
-    return "すべて";
+    return ["すべて"];
   });
+
   const [filterRange, setFilterRange] = useState("all");
   const [sortTarget, setSortTarget] = useState("encounter");
   const [sortOrder, setSortOrder] = useState("desc");
@@ -64,12 +98,10 @@ export default function App() {
   const isFirstLoad = useRef(true);
   const isFetchingRef = useRef(false);
 
-  // ★ 追加: PC画面かどうかを判定するステート（768px以上ならtrue）
   const [isPC, setIsPC] = useState(() =>
     typeof window !== "undefined" ? window.innerWidth >= 768 : false,
   );
 
-  // ★ 追加: ウィンドウサイズが変わった時にPC/スマホ判定を更新する
   useEffect(() => {
     const handleResize = () => setIsPC(window.innerWidth >= 768);
     window.addEventListener("resize", handleResize);
@@ -81,49 +113,6 @@ export default function App() {
     if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
     toastTimeoutRef.current = setTimeout(() => setToast(null), 3000);
   }, []);
-
-  const syncOfflineData = useCallback(async () => {
-    if (!navigator.onLine) return;
-    const queue = JSON.parse(localStorage.getItem("vgc_offline_queue") || "[]");
-    if (queue.length === 0) return;
-
-    setIsSyncing(true);
-    showToast(
-      `通信が回復しました。未送信データ(${queue.length}件)を同期中...`,
-      "info",
-    );
-
-    let successCount = 0;
-    const failedQueue = [];
-
-    for (const payload of queue) {
-      try {
-        const response = await fetch(GAS_URL, {
-          method: "POST",
-          headers: { "Content-Type": "text/plain" },
-          body: JSON.stringify(payload),
-        });
-        if (response.ok) successCount++;
-        else failedQueue.push(payload);
-      } catch (error) {
-        failedQueue.push(payload);
-      }
-    }
-
-    localStorage.setItem("vgc_offline_queue", JSON.stringify(failedQueue));
-    setIsSyncing(false);
-
-    if (successCount > 0) {
-      showToast(`${successCount}件のデータを自動送信しました！`, "success");
-      fetchAnalysisData(true);
-    }
-  }, [showToast]);
-
-  useEffect(() => {
-    syncOfflineData();
-    window.addEventListener("online", syncOfflineData);
-    return () => window.removeEventListener("online", syncOfflineData);
-  }, [syncOfflineData]);
 
   const fetchAnalysisData = useCallback(
     async (isManualReload = false) => {
@@ -156,7 +145,8 @@ export default function App() {
           isFirstLoad.current = false;
           const latestRow = dataRows[dataRows.length - 1];
           if (latestRow[7]) {
-            setSelectedParty(latestRow[7]);
+            // ★ 修正: 配列でセットするように変更
+            setSelectedParties([latestRow[7]]);
             const names = latestRow[7].split(", ");
             const ids = names.map((name) => POKEMON_DATA[name]).filter(Boolean);
             if (ids.length === 6) {
@@ -194,8 +184,59 @@ export default function App() {
     [showToast],
   );
 
+  const syncOfflineData = useCallback(async () => {
+    if (!navigator.onLine) return;
+    const queue = JSON.parse(localStorage.getItem("vgc_offline_queue") || "[]");
+    if (queue.length === 0) return;
+
+    setIsSyncing(true);
+    showToast(
+      `通信が回復しました。未送信データ(${queue.length}件)を同期中...`,
+      "info",
+    );
+
+    let successCount = 0;
+    const failedQueue = [];
+
+    for (const payload of queue) {
+      try {
+        const response = await fetch(GAS_URL, {
+          method: "POST",
+          headers: { "Content-Type": "text/plain" },
+          body: JSON.stringify(payload),
+        });
+        if (response.ok) successCount++;
+        else failedQueue.push(payload);
+      } catch {
+        failedQueue.push(payload);
+      }
+    }
+
+    localStorage.setItem("vgc_offline_queue", JSON.stringify(failedQueue));
+    setIsSyncing(false);
+
+    if (successCount > 0) {
+      showToast(`${successCount}件のデータを自動送信しました！`, "success");
+      fetchAnalysisData(true);
+    }
+  }, [fetchAnalysisData, showToast]);
+
   useEffect(() => {
-    fetchAnalysisData();
+    const initialSyncTimeout = window.setTimeout(() => {
+      syncOfflineData();
+    }, 0);
+    window.addEventListener("online", syncOfflineData);
+    return () => {
+      window.clearTimeout(initialSyncTimeout);
+      window.removeEventListener("online", syncOfflineData);
+    };
+  }, [syncOfflineData]);
+
+  useEffect(() => {
+    const initialFetchTimeout = window.setTimeout(() => {
+      fetchAnalysisData();
+    }, 0);
+    return () => window.clearTimeout(initialFetchTimeout);
   }, [fetchAnalysisData]);
 
   const handleReload = useCallback(() => {
@@ -203,38 +244,48 @@ export default function App() {
     fetchAnalysisData(true);
   }, [syncOfflineData, fetchAnalysisData]);
 
+  const analysisRows = useMemo(
+    () =>
+      analysisData.map((row) => ({
+        season: row[8],
+        party: row[7],
+        result: row[4],
+        opp6: row[1] ? row[1].split(", ") : [],
+        opp4: row[2] ? row[2].split(", ") : [],
+        my4: row[3] ? row[3].split(", ") : [],
+        myLead: row[5] ? row[5].split(", ") : [],
+        oppLead: row[6] ? row[6].split(", ") : [],
+      })),
+    [analysisData],
+  );
+
   const availableSeasons = useMemo(() => {
-    const seasons = analysisData
-      .map((row) => row[8])
+    const seasons = analysisRows
+      .map((row) => row.season)
       .filter((s) => s && String(s).trim() !== "");
     return [...new Set(seasons.reverse())];
-  }, [analysisData]);
+  }, [analysisRows]);
 
   const partyList = useMemo(() => {
-    let filtered = analysisData;
+    let filtered = analysisRows;
     if (analysisSeason !== "すべて")
-      filtered = filtered.filter((row) => row[8] === analysisSeason);
+      filtered = filtered.filter((row) => row.season === analysisSeason);
 
-    // 配列を反転（reverse）させて新しい順にし、重複を排除（Set）する
     const reversedParties = [...filtered]
       .reverse()
-      .map((row) => row[7])
+      .map((row) => row.party)
       .filter(Boolean);
     return ["すべて", ...new Set(reversedParties)];
-  }, [analysisData, analysisSeason]);
+  }, [analysisRows, analysisSeason]);
 
-  useEffect(() => {
-    // 選択中のパーティがリストから消えた場合（シーズン切替時など）
-    // 「すべて」ではなく、そのシーズンの「最新のパーティ」を自動選択する
-    if (selectedParty !== "すべて" && !partyList.includes(selectedParty)) {
-      setSelectedParty(partyList.length > 1 ? partyList[1] : "すべて");
-    }
-  }, [partyList, selectedParty]);
-
-  useEffect(() => {
-    if (selectedParty !== "すべて" && !partyList.includes(selectedParty))
-      setSelectedParty("すべて");
-  }, [partyList, selectedParty]);
+  const activeSelectedParties = useMemo(() => {
+    const hasInvalid = selectedParties.some(
+      (party) => party !== "すべて" && !partyList.includes(party),
+    );
+    return hasInvalid
+      ? [partyList.length > 1 ? partyList[1] : "すべて"]
+      : selectedParties;
+  }, [partyList, selectedParties]);
 
   const analysisSeasonList = useMemo(
     () => ["すべて", ...availableSeasons],
@@ -369,17 +420,18 @@ export default function App() {
     const timeoutId = setTimeout(() => controller.abort(), 60000);
 
     try {
-      await fetch(GAS_URL, {
+      const response = await fetch(GAS_URL, {
         method: "POST",
         headers: { "Content-Type": "text/plain" },
         body: JSON.stringify(payload),
         signal: controller.signal,
       });
+      if (!response.ok) throw new Error("通信エラー");
       clearTimeout(timeoutId);
       showToast("記録を保存しました", "success");
       resetUI();
       fetchAnalysisData();
-    } catch (error) {
+    } catch {
       clearTimeout(timeoutId);
       const queue = JSON.parse(
         localStorage.getItem("vgc_offline_queue") || "[]",
@@ -405,90 +457,110 @@ export default function App() {
     fetchAnalysisData,
   ]);
 
-  const suggestedIds = useMemo(() => {
-    const currentSeasonData = recordSeason
-      ? analysisData.filter((row) => row[8] === recordSeason)
-      : analysisData;
-    const globalCounts = {};
-    currentSeasonData.forEach((row) => {
-      const opp6 = row[1] ? row[1].split(", ") : [];
-      opp6.forEach((name) => {
-        globalCounts[name] = (globalCounts[name] || 0) + 1;
-      });
+  const recordSeasonRows = useMemo(
+    () =>
+      recordSeason
+        ? analysisRows.filter((row) => row.season === recordSeason)
+        : analysisRows,
+    [analysisRows, recordSeason],
+  );
+
+  const globalSuggestedIds = useMemo(() => {
+    const counts = new Map();
+    recordSeasonRows.forEach(({ opp6 }) => {
+      opp6.forEach((name) => counts.set(name, (counts.get(name) || 0) + 1));
     });
-    const globalSortedIds = Object.keys(globalCounts)
-      .sort((a, b) => globalCounts[b] - globalCounts[a])
-      .map((name) => POKEMON_DATA[name])
+
+    return [...counts.entries()]
+      .sort(([, countA], [, countB]) => countB - countA)
+      .map(([name]) => POKEMON_DATA[name])
       .filter(Boolean);
+  }, [recordSeasonRows]);
 
-    // ★ 追加: PCなら24匹、スマホなら15匹に制限を切り替える
+  const suggestedIds = useMemo(() => {
     const displayLimit = isPC ? 24 : 15;
-
-    if (selectedIds.length === 0)
-      return { suggested: globalSortedIds.slice(0, displayLimit) };
+    if (selectedIds.length === 0) {
+      return { suggested: globalSuggestedIds.slice(0, displayLimit) };
+    }
 
     const selectedNames = selectedIds
       .map((id) => POKE_BY_ID[id]?.name)
       .filter(Boolean);
-    const coCounts = {};
-    currentSeasonData.forEach((row) => {
-      const opp6 = row[1] ? row[1].split(", ") : [];
-      if (selectedNames.every((name) => opp6.includes(name))) {
+    const selectedNameSet = new Set(selectedNames);
+    const coCounts = new Map();
+
+    recordSeasonRows.forEach(({ opp6 }) => {
+      const opponentSet = new Set(opp6);
+      if (selectedNames.every((name) => opponentSet.has(name))) {
         opp6.forEach((name) => {
-          if (!selectedNames.includes(name))
-            coCounts[name] = (coCounts[name] || 0) + 1;
+          if (!selectedNameSet.has(name)) {
+            coCounts.set(name, (coCounts.get(name) || 0) + 1);
+          }
         });
       }
     });
-    const sortedIds = Object.keys(coCounts)
-      .sort((a, b) => coCounts[b] - coCounts[a])
-      .map((name) => POKEMON_DATA[name])
+
+    const coSuggestedIds = [...coCounts.entries()]
+      .sort(([, countA], [, countB]) => countB - countA)
+      .map(([name]) => POKEMON_DATA[name])
       .filter(Boolean);
-    const fallbackIds = globalSortedIds.filter(
-      (id) => !selectedIds.includes(id) && !sortedIds.includes(id),
+    const selectedIdSet = new Set(selectedIds);
+    const coSuggestedIdSet = new Set(coSuggestedIds);
+    const fallbackIds = globalSuggestedIds.filter(
+      (id) => !selectedIdSet.has(id) && !coSuggestedIdSet.has(id),
     );
 
-    // ★ ここも上限を displayLimit に変更
-    return { suggested: [...sortedIds, ...fallbackIds].slice(0, displayLimit) };
-  }, [selectedIds, analysisData, recordSeason, isPC]); // ★ isPC を依存配列に追加
+    return {
+      suggested: [...coSuggestedIds, ...fallbackIds].slice(0, displayLimit),
+    };
+  }, [selectedIds, recordSeasonRows, globalSuggestedIds, isPC]);
 
-  const stats = useMemo(() => {
-    let filteredData = analysisData;
-    if (selectedParty !== "すべて")
-      filteredData = filteredData.filter((row) => row[7] === selectedParty);
+  const baseStats = useMemo(() => {
+    let filteredData = analysisRows;
+
+    // ★ 修正: 複数選択の合算処理（バグ修正済）
+    if (
+      !activeSelectedParties.includes("すべて") &&
+      activeSelectedParties.length > 0
+    ) {
+      filteredData = filteredData.filter((row) =>
+        activeSelectedParties.includes(row.party),
+      );
+    }
+
     if (analysisSeason !== "すべて")
-      filteredData = filteredData.filter((row) => row[8] === analysisSeason);
+      filteredData = filteredData.filter((row) => row.season === analysisSeason);
+
     const targetData =
       filterRange === "recent10" ? filteredData.slice(-10) : filteredData;
 
     const totalMatches = targetData.length;
-    const winCount = targetData.filter((row) => row[4] === "勝ち").length;
-    const winRate =
-      totalMatches > 0 ? ((winCount / totalMatches) * 100).toFixed(1) : 0;
-
+    let winCount = 0;
     let currentWins = 0;
-    const trendData = targetData.map((row, index) => {
-      if (row[4] === "勝ち") currentWins++;
-      return {
-        match: index + 1,
-        winRate: parseFloat(((currentWins / (index + 1)) * 100).toFixed(1)),
-      };
-    });
+    const trendData = [];
 
     const oppStats = {},
       myPickCounts = {},
       oppLeadPairs = {},
       myLeadPairs = {};
 
-    targetData.forEach((row) => {
-      const isWin = row[4] === "勝ち";
-      const opp6 = row[1] ? row[1].split(", ") : [];
-      const opp4 = row[2] ? row[2].split(", ") : [];
-      const my4 = row[3] ? row[3].split(", ") : [];
-      const oppLead = row[6] ? row[6].split(", ") : [];
-      const myLead = row[5] ? row[5].split(", ") : [];
-      const hasLeadData = row[6] && String(row[6]).trim() !== "";
-      const myBack = my4.filter((p) => !myLead.includes(p));
+    targetData.forEach((row, index) => {
+      const isWin = row.result === "勝ち";
+      if (isWin) {
+        winCount += 1;
+        currentWins += 1;
+      }
+      trendData.push({
+        match: index + 1,
+        winRate: parseFloat(((currentWins / (index + 1)) * 100).toFixed(1)),
+      });
+
+      const { opp6, opp4, my4, oppLead, myLead } = row;
+      const opp4Set = new Set(opp4);
+      const oppLeadSet = new Set(oppLead);
+      const myLeadSet = new Set(myLead);
+      const hasLeadData = oppLead.some((name) => name.trim() !== "");
+      const myBack = my4.filter((poke) => !myLeadSet.has(poke));
 
       opp6.forEach((poke) => {
         if (!oppStats[poke])
@@ -501,13 +573,13 @@ export default function App() {
             pickWin: 0,
           };
         oppStats[poke].encounter += 1;
-        if (opp4.includes(poke)) {
+        if (opp4Set.has(poke)) {
           oppStats[poke].pick += 1;
           if (isWin) oppStats[poke].pickWin += 1;
         }
         if (hasLeadData) {
           oppStats[poke].validLeadMatch += 1;
-          if (oppLead.includes(poke)) oppStats[poke].lead += 1;
+          if (oppLeadSet.has(poke)) oppStats[poke].lead += 1;
         }
       });
 
@@ -516,17 +588,19 @@ export default function App() {
       });
 
       if (oppLead.length === 2) {
-        const pair = [...oppLead].sort().join(" + ");
+        const normalizedLead = [...oppLead].sort();
+        const pair = normalizedLead.join(" + ");
         if (!oppLeadPairs[pair])
-          oppLeadPairs[pair] = { pokes: [...oppLead].sort(), count: 0, win: 0 };
+          oppLeadPairs[pair] = { pokes: normalizedLead, count: 0, win: 0 };
         oppLeadPairs[pair].count += 1;
         if (isWin) oppLeadPairs[pair].win += 1;
       }
       if (myLead.length === 2) {
-        const pair = [...myLead].sort().join(" + ");
+        const normalizedLead = [...myLead].sort();
+        const pair = normalizedLead.join(" + ");
         if (!myLeadPairs[pair])
           myLeadPairs[pair] = {
-            pokes: [...myLead].sort(),
+            pokes: normalizedLead,
             count: 0,
             win: 0,
             backs: {},
@@ -543,7 +617,7 @@ export default function App() {
       }
     });
 
-    let statsArray = Object.values(oppStats).map((s) => ({
+    const statsArray = Object.values(oppStats).map((s) => ({
       name: s.name,
       id: POKEMON_DATA[s.name] || 0,
       encounter: s.encounter,
@@ -552,24 +626,6 @@ export default function App() {
       winRate: s.pick > 0 ? (s.pickWin / s.pick) * 100 : 0,
       pick: s.pick,
     }));
-
-    statsArray.sort((a, b) => {
-      if (sortTarget === "winRate") {
-        if (a.pick === 0 && b.pick !== 0) return 1;
-        if (b.pick === 0 && a.pick !== 0) return -1;
-        if (a.pick === 0 && b.pick === 0) return b.encounter - a.encounter;
-      }
-      let diff = 0;
-      if (sortTarget === "encounter")
-        diff = a.encounter - b.encounter || a.pickRate - b.pickRate;
-      else if (sortTarget === "pick")
-        diff = a.pickRate - b.pickRate || a.encounter - b.encounter;
-      else if (sortTarget === "lead")
-        diff = a.leadRate - b.leadRate || a.encounter - b.encounter;
-      else if (sortTarget === "winRate")
-        diff = a.winRate - b.winRate || a.encounter - b.encounter;
-      return sortOrder === "desc" ? -diff : diff;
-    });
 
     const myStatsArray = Object.entries(myPickCounts)
       .map(([name, count]) => ({ name, count, id: POKEMON_DATA[name] || 0 }))
@@ -593,6 +649,9 @@ export default function App() {
       .sort((a, b) => b.count - a.count)
       .slice(0, 5);
 
+    const winRate =
+      totalMatches > 0 ? ((winCount / totalMatches) * 100).toFixed(1) : 0;
+
     return {
       totalMatches,
       winCount,
@@ -604,13 +663,21 @@ export default function App() {
       myLeadPairStats,
     };
   }, [
-    analysisData,
-    selectedParty,
+    analysisRows,
+    activeSelectedParties,
     analysisSeason,
     filterRange,
-    sortTarget,
-    sortOrder,
   ]);
+
+  const sortedStatsArray = useMemo(
+    () => sortOpponentStats(baseStats.statsArray, sortTarget, sortOrder),
+    [baseStats.statsArray, sortTarget, sortOrder],
+  );
+
+  const stats = useMemo(
+    () => ({ ...baseStats, statsArray: sortedStatsArray }),
+    [baseStats, sortedStatsArray],
+  );
 
   const handleAIAnalysis = useCallback(async () => {
     if (stats.totalMatches === 0) {
@@ -733,7 +800,6 @@ export default function App() {
             setIsSeasonDropdownOpen={setIsSeasonDropdownOpen}
             availableSeasons={availableSeasons}
             selectedIds={selectedIds}
-            setSelectedIds={setSelectedIds}
             handleToggleOpp6={handleToggleOpp6}
             searchText={searchText}
             setSearchText={setSearchText}
@@ -754,27 +820,29 @@ export default function App() {
             showToast={showToast}
           />
         ) : (
-          <AnalysisTab
-            isLoading={isLoading}
-            stats={stats}
-            selectedParty={selectedParty}
-            setSelectedParty={setSelectedParty}
-            partyList={partyList}
-            analysisSeason={analysisSeason}
-            setAnalysisSeason={setAnalysisSeason}
-            analysisSeasonList={analysisSeasonList}
-            filterRange={filterRange}
-            setFilterRange={setFilterRange}
-            sortTarget={sortTarget}
-            handleSort={handleSort}
-            sortOrder={sortOrder}
-            handleAIAnalysis={handleAIAnalysis}
-            isAiLoading={isAiLoading}
-            aiError={aiError}
-            aiResult={aiResult}
-            isAiExpanded={isAiExpanded}
-            setIsAiExpanded={setIsAiExpanded}
-          />
+          <Suspense fallback={<div className="loading">データを読み込み中...</div>}>
+            <AnalysisTab
+              isLoading={isLoading}
+              stats={stats}
+              selectedParties={activeSelectedParties} /* ★ 修正: 複数形に統一 */
+              setSelectedParties={setSelectedParties} /* ★ 修正: 複数形に統一 */
+              partyList={partyList}
+              analysisSeason={analysisSeason}
+              setAnalysisSeason={setAnalysisSeason}
+              analysisSeasonList={analysisSeasonList}
+              filterRange={filterRange}
+              setFilterRange={setFilterRange}
+              sortTarget={sortTarget}
+              handleSort={handleSort}
+              sortOrder={sortOrder}
+              handleAIAnalysis={handleAIAnalysis}
+              isAiLoading={isAiLoading}
+              aiError={aiError}
+              aiResult={aiResult}
+              isAiExpanded={isAiExpanded}
+              setIsAiExpanded={setIsAiExpanded}
+            />
+          </Suspense>
         )}
       </div>
       <Toast toast={toast} />

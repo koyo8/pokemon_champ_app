@@ -15,8 +15,8 @@ import {
 export function AnalysisTab({
   isLoading,
   stats,
-  selectedParty,
-  setSelectedParty,
+  selectedParties,       /* ★ 修正: 引数の名前も複数形に統一 */
+  setSelectedParties,    /* ★ 修正: 引数の名前も複数形に統一 */
   partyList,
   analysisSeason,
   setAnalysisSeason,
@@ -41,7 +41,7 @@ export function AnalysisTab({
       {isLoading ? (
         <div className="loading">データを読み込み中...</div>
       ) : stats.totalMatches === 0 &&
-        selectedParty === "すべて" &&
+        selectedParties.includes("すべて") && /* ★ 修正: 配列の判定に統一 */
         analysisSeason === "すべて" ? (
         <div className="loading">まだ対戦データがありません。</div>
       ) : (
@@ -51,9 +51,6 @@ export function AnalysisTab({
             className="md-card"
             style={{ padding: "16px 20px", marginBottom: "24px" }}
           >
-            {/* <h3 style={{ marginTop: 0, marginBottom: "16px" }}>
-              分析フィルター
-            </h3> */}
             <div style={{ marginBottom: "16px" }}>
               <label
                 htmlFor="season-select"
@@ -92,7 +89,7 @@ export function AnalysisTab({
                 対象パーティ
               </label>
 
-              {/* カスタムプルダウン（ボタンは名前あり、リストはアイコンのみ） */}
+              {/* 複数選択対応のカスタムプルダウン */}
               <div
                 style={{ position: "relative", marginTop: "8px", zIndex: 100 }}
               >
@@ -111,8 +108,8 @@ export function AnalysisTab({
                     minHeight: "56px",
                   }}
                 >
-                  {/* ▼ ボタン部分：名前とアイコンのグリッド表示 ▼ */}
-                  {selectedParty === "すべて" ? (
+                  {/* ボタン部分の表示テキスト制御 */}
+                  {selectedParties.includes("すべて") ? (
                     <span
                       style={{
                         fontWeight: "bold",
@@ -122,9 +119,9 @@ export function AnalysisTab({
                     >
                       すべてのパーティ
                     </span>
-                  ) : (
+                  ) : selectedParties.length === 1 ? (
                     <div className="dropdown-party-grid">
-                      {selectedParty.split(", ").map((name, idx) => {
+                      {selectedParties[0].split(", ").map((name, idx) => {
                         const id = POKEMON_DATA[name];
                         return (
                           <div
@@ -153,6 +150,16 @@ export function AnalysisTab({
                         );
                       })}
                     </div>
+                  ) : (
+                    <span
+                      style={{
+                        fontWeight: "bold",
+                        color: "#1A73E8",
+                        fontSize: "15px",
+                      }}
+                    >
+                      選択した {selectedParties.length} 件のパーティを合算中
+                    </span>
                   )}
                   <span
                     style={{
@@ -168,6 +175,7 @@ export function AnalysisTab({
                   </span>
                 </button>
 
+                {/* チェックボックス付きのドロップダウンリスト */}
                 {isDropdownOpen && (
                   <div
                     style={{
@@ -186,57 +194,94 @@ export function AnalysisTab({
                       padding: "4px",
                     }}
                   >
-                    {partyList.map((partyStr) => (
-                      <button
-                        key={partyStr}
-                        onClick={() => {
-                          setSelectedParty(partyStr);
-                          setIsDropdownOpen(false);
-                        }}
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          padding: "12px 16px",
-                          borderRadius: "8px",
-                          border: "none",
-                          backgroundColor:
-                            selectedParty === partyStr
+                    {partyList.map((partyStr) => {
+                      const isChecked = selectedParties.includes(partyStr);
+                      return (
+                        <button
+                          key={partyStr}
+                          onClick={() => {
+                            if (partyStr === "すべて") {
+                              setSelectedParties(["すべて"]);
+                            } else {
+                              let next = selectedParties.filter(
+                                (p) => p !== "すべて",
+                              );
+                              if (next.includes(partyStr)) {
+                                next = next.filter((p) => p !== partyStr);
+                              } else {
+                                next = [...next, partyStr];
+                              }
+                              if (next.length === 0) next = ["すべて"];
+                              setSelectedParties(next);
+                            }
+                          }}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "12px",
+                            padding: "12px 16px",
+                            borderRadius: "8px",
+                            border: "none",
+                            backgroundColor: isChecked
                               ? "var(--primary-light)"
                               : "transparent",
-                          cursor: "pointer",
-                          minHeight: "56px",
-                          width: "100%",
-                        }}
-                      >
-                        {/* ▼ リスト部分：アイコンのみのコンパクト表示 ▼ */}
-                        {partyStr === "すべて" ? (
-                          <span
+                            cursor: "pointer",
+                            minHeight: "56px",
+                            width: "100%",
+                          }}
+                        >
+                          {/* チェックボックス風アイコン */}
+                          <div
                             style={{
+                              width: "20px",
+                              height: "20px",
+                              borderRadius: "4px",
+                              border: isChecked
+                                ? "none"
+                                : "2px solid var(--divider)",
+                              backgroundColor: isChecked ? "#1A73E8" : "white",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              color: "white",
+                              fontSize: "13px",
                               fontWeight: "bold",
-                              color: "var(--text-main)",
-                              fontSize: "15px",
+                              flexShrink: 0,
                             }}
                           >
-                            すべてのパーティ
-                          </span>
-                        ) : (
-                          <div className="party-icons">
-                            {partyStr.split(", ").map((name, idx) => {
-                              const id = POKEMON_DATA[name];
-                              return id ? (
-                                <PokemonImage
-                                  key={`${id}-${idx}`}
-                                  pokeId={id}
-                                  name={name}
-                                />
-                              ) : (
-                                <span key={idx}>{name}</span>
-                              );
-                            })}
+                            {isChecked && "✓"}
                           </div>
-                        )}
-                      </button>
-                    ))}
+
+                          {/* アイコン表示 */}
+                          {partyStr === "すべて" ? (
+                            <span
+                              style={{
+                                fontWeight: "bold",
+                                color: "var(--text-main)",
+                                fontSize: "15px",
+                              }}
+                            >
+                              すべてのパーティ
+                            </span>
+                          ) : (
+                            <div className="party-icons">
+                              {partyStr.split(", ").map((name, idx) => {
+                                const id = POKEMON_DATA[name];
+                                return id ? (
+                                  <PokemonImage
+                                    key={`${id}-${idx}`}
+                                    pokeId={id}
+                                    name={name}
+                                  />
+                                ) : (
+                                  <span key={idx}>{name}</span>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
               </div>

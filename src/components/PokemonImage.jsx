@@ -17,7 +17,10 @@ export const PokemonImage = memo(({ pokeId, name }) => {
       alt={name}
       aria-hidden="true"
       onError={handleError}
-      
+      width="32"
+      height="32"
+      loading="lazy"
+      decoding="async"
     />
   );
 });
