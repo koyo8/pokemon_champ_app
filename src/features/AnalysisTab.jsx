@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { memo, useCallback, useMemo, useState } from "react";
 import { POKEMON_DATA } from "../data/pokemon";
 import { PokemonImage } from "../components/PokemonImage";
 import {
@@ -11,6 +11,168 @@ import {
   ReferenceLine,
   ResponsiveContainer,
 } from "recharts";
+
+const TrendChart = memo(function TrendChart({ trendData }) {
+  const showDots = trendData.length <= 20;
+
+  if (trendData.length <= 1) return null;
+
+  return (
+    <div
+      className="md-card"
+      style={{ padding: "16px 20px", marginBottom: "24px" }}
+    >
+      <h3 style={{ marginTop: 0, marginBottom: "16px" }}>勝率の推移</h3>
+      <div style={{ width: "100%", height: "220px" }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart
+            data={trendData}
+            margin={{ top: 5, right: 10, left: -20, bottom: 5 }}
+          >
+            <CartesianGrid
+              strokeDasharray="3 3"
+              vertical={false}
+              stroke="#e0e0e0"
+            />
+            <XAxis
+              dataKey="match"
+              tickFormatter={(tick) => `${tick}戦`}
+              tick={{ fontSize: 12, fill: "#5f6368" }}
+            />
+            <YAxis
+              domain={[0, 100]}
+              ticks={[0, 50, 100]}
+              tickFormatter={(tick) => `${tick}%`}
+              tick={{ fontSize: 12, fill: "#5f6368" }}
+            />
+            <Tooltip
+              formatter={(value) => [`${value}%`, "勝率"]}
+              labelFormatter={(label) => `${label}戦目時点`}
+              contentStyle={{
+                borderRadius: "8px",
+                border: "none",
+                boxShadow: "var(--shadow-md)",
+                fontSize: "13px",
+                fontWeight: "bold",
+              }}
+            />
+            <ReferenceLine
+              y={50}
+              stroke="#FF3B30"
+              strokeDasharray="3 3"
+              opacity={0.6}
+            />
+            <Line
+              type="monotone"
+              dataKey="winRate"
+              stroke="#1A73E8"
+              strokeWidth={3}
+              dot={
+                showDots
+                  ? {
+                      r: 4,
+                      fill: "#1A73E8",
+                      strokeWidth: 2,
+                      stroke: "#fff",
+                    }
+                  : false
+              }
+              activeDot={{ r: 6 }}
+            />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
+});
+
+const OpponentStatsSection = memo(function OpponentStatsSection({
+  statsArray,
+  sortTarget,
+  sortOrder,
+  handleSort,
+}) {
+  return (
+    <>
+      <h2>相手ポケモンの統計データ</h2>
+      <div className="sort-container">
+        <button
+          className={`sort-btn ${sortTarget === "encounter" ? "active" : ""}`}
+          onClick={() => handleSort("encounter")}
+        >
+          遭遇回数{" "}
+          {sortTarget === "encounter"
+            ? sortOrder === "desc"
+              ? "▼"
+              : "▲"
+            : ""}
+        </button>
+        <button
+          className={`sort-btn ${sortTarget === "pick" ? "active" : ""}`}
+          onClick={() => handleSort("pick")}
+        >
+          選出率 {sortTarget === "pick" ? (sortOrder === "desc" ? "▼" : "▲") : ""}
+        </button>
+        <button
+          className={`sort-btn ${sortTarget === "lead" ? "active" : ""}`}
+          onClick={() => handleSort("lead")}
+        >
+          先発率 {sortTarget === "lead" ? (sortOrder === "desc" ? "▼" : "▲") : ""}
+        </button>
+        <button
+          className={`sort-btn ${sortTarget === "winRate" ? "active" : ""}`}
+          onClick={() => handleSort("winRate")}
+        >
+          勝率{" "}
+          {sortTarget === "winRate"
+            ? sortOrder === "desc"
+              ? "▼"
+              : "▲"
+            : ""}
+        </button>
+      </div>
+
+      <div className="table-scroll">
+        <table style={{ width: "100%" }}>
+          <thead>
+            <tr>
+              <th style={{ textAlign: "center", width: "35%" }}>ポケモン</th>
+              <th>遭遇</th>
+              <th>選出</th>
+              <th>先発</th>
+              <th>勝率</th>
+            </tr>
+          </thead>
+          <tbody>
+            {statsArray.map((stat) => (
+              <tr key={stat.name}>
+                <td className="poke-cell">
+                  <PokemonImage pokeId={stat.id} name={stat.name} />
+                  {stat.name}
+                </td>
+                <td>{stat.encounter}</td>
+                <td>{stat.pickRate.toFixed(0)}%</td>
+                <td>{stat.leadRate.toFixed(0)}%</td>
+                <td
+                  style={
+                    stat.pick === 0
+                      ? { color: "var(--text-sub)", fontWeight: "bold" }
+                      : {
+                          color: stat.winRate >= 50 ? "#34C759" : "#FF3B30",
+                          fontWeight: "bold",
+                        }
+                  }
+                >
+                  {stat.pick === 0 ? "-" : `${stat.winRate.toFixed(0)}%`}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
+  );
+});
 
 export function AnalysisTab({
   isLoading,
@@ -34,14 +196,47 @@ export function AnalysisTab({
   setIsAiExpanded,
 }) {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const showDots = stats.trendData && stats.trendData.length <= 20;
+  const selectedPartySet = useMemo(
+    () => new Set(selectedParties),
+    [selectedParties],
+  );
+  const selectedPartyNames = useMemo(
+    () =>
+      selectedParties.length === 1 && !selectedPartySet.has("すべて")
+        ? selectedParties[0].split(", ")
+        : [],
+    [selectedParties, selectedPartySet],
+  );
+  const partyOptions = useMemo(
+    () =>
+      partyList.map((partyStr) => ({
+        partyStr,
+        names: partyStr === "すべて" ? [] : partyStr.split(", "),
+      })),
+    [partyList],
+  );
+  const handlePartyToggle = useCallback(
+    (partyStr) => {
+      setSelectedParties((previous) => {
+        if (partyStr === "すべて") return ["すべて"];
+
+        let next = previous.filter((party) => party !== "すべて");
+        next = next.includes(partyStr)
+          ? next.filter((party) => party !== partyStr)
+          : [...next, partyStr];
+
+        return next.length === 0 ? ["すべて"] : next;
+      });
+    },
+    [setSelectedParties],
+  );
 
   return (
     <div role="tabpanel">
       {isLoading ? (
         <div className="loading">データを読み込み中...</div>
       ) : stats.totalMatches === 0 &&
-        selectedParties.includes("すべて") && /* ★ 修正: 配列の判定に統一 */
+        selectedPartySet.has("すべて") &&
         analysisSeason === "すべて" ? (
         <div className="loading">まだ対戦データがありません。</div>
       ) : (
@@ -94,7 +289,7 @@ export function AnalysisTab({
                 style={{ position: "relative", marginTop: "8px", zIndex: 100 }}
               >
                 <button
-                  onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                  onClick={() => setIsDropdownOpen((isOpen) => !isOpen)}
                   style={{
                     display: "flex",
                     alignItems: "center",
@@ -109,7 +304,7 @@ export function AnalysisTab({
                   }}
                 >
                   {/* ボタン部分の表示テキスト制御 */}
-                  {selectedParties.includes("すべて") ? (
+                  {selectedPartySet.has("すべて") ? (
                     <span
                       style={{
                         fontWeight: "bold",
@@ -121,7 +316,7 @@ export function AnalysisTab({
                     </span>
                   ) : selectedParties.length === 1 ? (
                     <div className="dropdown-party-grid">
-                      {selectedParties[0].split(", ").map((name, idx) => {
+                      {selectedPartyNames.map((name, idx) => {
                         const id = POKEMON_DATA[name];
                         return (
                           <div
@@ -194,27 +389,12 @@ export function AnalysisTab({
                       padding: "4px",
                     }}
                   >
-                    {partyList.map((partyStr) => {
-                      const isChecked = selectedParties.includes(partyStr);
+                    {partyOptions.map(({ partyStr, names }) => {
+                      const isChecked = selectedPartySet.has(partyStr);
                       return (
                         <button
                           key={partyStr}
-                          onClick={() => {
-                            if (partyStr === "すべて") {
-                              setSelectedParties(["すべて"]);
-                            } else {
-                              let next = selectedParties.filter(
-                                (p) => p !== "すべて",
-                              );
-                              if (next.includes(partyStr)) {
-                                next = next.filter((p) => p !== partyStr);
-                              } else {
-                                next = [...next, partyStr];
-                              }
-                              if (next.length === 0) next = ["すべて"];
-                              setSelectedParties(next);
-                            }
-                          }}
+                          onClick={() => handlePartyToggle(partyStr)}
                           style={{
                             display: "flex",
                             alignItems: "center",
@@ -265,7 +445,7 @@ export function AnalysisTab({
                             </span>
                           ) : (
                             <div className="party-icons">
-                              {partyStr.split(", ").map((name, idx) => {
+                              {names.map((name, idx) => {
                                 const id = POKEMON_DATA[name];
                                 return id ? (
                                   <PokemonImage
@@ -333,74 +513,7 @@ export function AnalysisTab({
             勝率<span>{stats.winRate}</span>%
           </div>
 
-          {/* 勝率推移グラフ */}
-          {stats.trendData && stats.trendData.length > 1 && (
-            <div
-              className="md-card"
-              style={{ padding: "16px 20px", marginBottom: "24px" }}
-            >
-              <h3 style={{ marginTop: 0, marginBottom: "16px" }}>勝率の推移</h3>
-              <div style={{ width: "100%", height: "220px" }}>
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart
-                    data={stats.trendData}
-                    margin={{ top: 5, right: 10, left: -20, bottom: 5 }}
-                  >
-                    <CartesianGrid
-                      strokeDasharray="3 3"
-                      vertical={false}
-                      stroke="#e0e0e0"
-                    />
-                    <XAxis
-                      dataKey="match"
-                      tickFormatter={(tick) => `${tick}戦`}
-                      tick={{ fontSize: 12, fill: "#5f6368" }}
-                    />
-                    <YAxis
-                      domain={[0, 100]}
-                      ticks={[0, 50, 100]}
-                      tickFormatter={(tick) => `${tick}%`}
-                      tick={{ fontSize: 12, fill: "#5f6368" }}
-                    />
-                    <Tooltip
-                      formatter={(value) => [`${value}%`, "勝率"]}
-                      labelFormatter={(label) => `${label}戦目時点`}
-                      contentStyle={{
-                        borderRadius: "8px",
-                        border: "none",
-                        boxShadow: "var(--shadow-md)",
-                        fontSize: "13px",
-                        fontWeight: "bold",
-                      }}
-                    />
-                    <ReferenceLine
-                      y={50}
-                      stroke="#FF3B30"
-                      strokeDasharray="3 3"
-                      opacity={0.6}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="winRate"
-                      stroke="#1A73E8"
-                      strokeWidth={3}
-                      dot={
-                        showDots
-                          ? {
-                              r: 4,
-                              fill: "#1A73E8",
-                              strokeWidth: 2,
-                              stroke: "#fff",
-                            }
-                          : false
-                      }
-                      activeDot={{ r: 6 }}
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-          )}
+          <TrendChart trendData={stats.trendData} />
 
           {/* AI環境分析 */}
           <div
@@ -500,87 +613,12 @@ export function AnalysisTab({
             )}
           </div>
 
-          {/* 相手ポケモンの統計データ */}
-          <h2>相手ポケモンの統計データ</h2>
-          <div className="sort-container">
-            <button
-              className={`sort-btn ${sortTarget === "encounter" ? "active" : ""}`}
-              onClick={() => handleSort("encounter")}
-            >
-              遭遇回数{" "}
-              {sortTarget === "encounter"
-                ? sortOrder === "desc"
-                  ? "▼"
-                  : "▲"
-                : ""}
-            </button>
-            <button
-              className={`sort-btn ${sortTarget === "pick" ? "active" : ""}`}
-              onClick={() => handleSort("pick")}
-            >
-              選出率{" "}
-              {sortTarget === "pick" ? (sortOrder === "desc" ? "▼" : "▲") : ""}
-            </button>
-            <button
-              className={`sort-btn ${sortTarget === "lead" ? "active" : ""}`}
-              onClick={() => handleSort("lead")}
-            >
-              先発率{" "}
-              {sortTarget === "lead" ? (sortOrder === "desc" ? "▼" : "▲") : ""}
-            </button>
-            <button
-              className={`sort-btn ${sortTarget === "winRate" ? "active" : ""}`}
-              onClick={() => handleSort("winRate")}
-            >
-              勝率{" "}
-              {sortTarget === "winRate"
-                ? sortOrder === "desc"
-                  ? "▼"
-                  : "▲"
-                : ""}
-            </button>
-          </div>
-
-          <div className="table-scroll">
-            <table style={{ width: "100%" }}>
-              <thead>
-                <tr>
-                  <th style={{ textAlign: "center", width: "35%" }}>
-                    ポケモン
-                  </th>
-                  <th>遭遇</th>
-                  <th>選出</th>
-                  <th>先発</th>
-                  <th>勝率</th>
-                </tr>
-              </thead>
-              <tbody>
-                {stats.statsArray.map((s) => (
-                  <tr key={s.name}>
-                    <td className="poke-cell">
-                      <PokemonImage pokeId={s.id} name={s.name} />
-                      {s.name}
-                    </td>
-                    <td>{s.encounter}</td>
-                    <td>{s.pickRate.toFixed(0)}%</td>
-                    <td>{s.leadRate.toFixed(0)}%</td>
-                    <td
-                      style={
-                        s.pick === 0
-                          ? { color: "var(--text-sub)", fontWeight: "bold" }
-                          : {
-                              color: s.winRate >= 50 ? "#34C759" : "#FF3B30",
-                              fontWeight: "bold",
-                            }
-                      }
-                    >
-                      {s.pick === 0 ? "-" : `${s.winRate.toFixed(0)}%`}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <OpponentStatsSection
+            statsArray={stats.statsArray}
+            sortTarget={sortTarget}
+            sortOrder={sortOrder}
+            handleSort={handleSort}
+          />
 
           {/* 相手の先発ペア TOP5 */}
           <h2>相手のよく来る先発ペア（TOP5）</h2>

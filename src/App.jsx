@@ -352,14 +352,14 @@ export default function App() {
     [showToast],
   );
 
-  const handleSort = (target) => {
+  const handleSort = useCallback((target) => {
     if (sortTarget === target)
       setSortOrder((prev) => (prev === "desc" ? "asc" : "desc"));
     else {
       setSortTarget(target);
       setSortOrder("desc");
     }
-  };
+  }, [sortTarget]);
 
   const handleSave = useCallback(async () => {
     if (selectedIds.length === 0)
